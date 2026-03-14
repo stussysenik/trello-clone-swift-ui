@@ -86,6 +86,17 @@ enum AppTheme {
     static let radiusMD: CGFloat = 10
     static let radiusLG: CGFloat = 14
 
+    // MARK: Card Detail Typography (iA Writer-inspired)
+
+    /// Large bold title for card detail view
+    static let cardDetailTitleFont: Font = .system(.title, weight: .bold)
+
+    /// Serif body font for card descriptions — iA Writer writing feel
+    static let cardDetailBodyFont: Font = .system(.body, design: .serif)
+
+    /// Generous line spacing for readable long-form text
+    static let cardDetailBodyLineSpacing: CGFloat = 6
+
     // MARK: Sizes
 
     /// Fixed width for list columns — fallback for drag previews

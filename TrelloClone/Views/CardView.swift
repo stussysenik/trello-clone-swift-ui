@@ -20,8 +20,7 @@ struct TagPillView: View {
 
 // MARK: - CardView
 // Displays a single card with full interaction layer:
-// - Press feedback (scale 0.97) for tactile response
-// - Tap opens CardDetailSheet for editing
+// - Tap navigates to full-viewport CardDetailView via NavigationLink
 // - Context menu with Edit / Delete / Move to Board
 // - Draggable for card reordering between lists
 // Respects Reduce Motion for all decorative animations.
@@ -34,72 +33,56 @@ struct CardView: View {
     @Environment(BoardStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var showDetail = false
     @State private var showDeleteConfirmation = false
     @State private var showMoveSheet = false
-    @GestureState private var isPressed = false
 
     var body: some View {
-        cardContent
-            .contentShape(Rectangle())
-            .onTapGesture { showDetail = true }
-            // Press feedback via zero-distance drag gesture
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .updating($isPressed) { _, state, _ in
-                        state = true
-                    }
+        NavigationLink(value: CardRoute(cardID: card.id, listID: listID, boardID: boardID)) {
+            cardContent
+        }
+        .buttonStyle(.plain)
+        // Drag-and-drop support
+        .draggable(CardTransferPayload(cardID: card.id, sourceListID: listID)) {
+            CardDragPreview(title: card.title)
+        }
+        // Context menu (right-click on macOS, long-press on iOS)
+        .contextMenu {
+            NavigationLink(value: CardRoute(cardID: card.id, listID: listID, boardID: boardID)) {
+                Label("Edit Card", systemImage: "pencil")
+            }
+            Button {
+                showMoveSheet = true
+            } label: {
+                Label("Move to Board...", systemImage: "arrow.right.square")
+            }
+            Button(role: .destructive) {
+                showDeleteConfirmation = true
+            } label: {
+                Label("Delete Card", systemImage: "trash")
+            }
+        }
+        // Delete confirmation dialog
+        .confirmationDialog(
+            "Delete \"\(card.title)\"?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                withAnimation(reduceMotion ? nil : AppTheme.professionalSpring) {
+                    store.deleteCard(id: card.id, from: listID, in: boardID)
+                }
+            }
+        } message: {
+            Text("This action cannot be undone.")
+        }
+        // Move to board sheet
+        .sheet(isPresented: $showMoveSheet) {
+            MoveCardSheet(
+                cardID: card.id,
+                currentListID: listID,
+                currentBoardID: boardID
             )
-            .scaleEffect(isPressed ? AppTheme.pressScale : 1.0)
-            .animation(reduceMotion ? nil : AppTheme.pressAnimation, value: isPressed)
-            // Drag-and-drop support
-            .draggable(CardTransferPayload(cardID: card.id, sourceListID: listID)) {
-                CardDragPreview(title: card.title)
-            }
-            // Context menu (right-click on macOS, long-press on iOS)
-            .contextMenu {
-                Button {
-                    showDetail = true
-                } label: {
-                    Label("Edit Card", systemImage: "pencil")
-                }
-                Button {
-                    showMoveSheet = true
-                } label: {
-                    Label("Move to Board...", systemImage: "arrow.right.square")
-                }
-                Button(role: .destructive) {
-                    showDeleteConfirmation = true
-                } label: {
-                    Label("Delete Card", systemImage: "trash")
-                }
-            }
-            // Delete confirmation dialog
-            .confirmationDialog(
-                "Delete \"\(card.title)\"?",
-                isPresented: $showDeleteConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    withAnimation(reduceMotion ? nil : AppTheme.professionalSpring) {
-                        store.deleteCard(id: card.id, from: listID, in: boardID)
-                    }
-                }
-            } message: {
-                Text("This action cannot be undone.")
-            }
-            // Card detail sheet
-            .sheet(isPresented: $showDetail) {
-                CardDetailSheet(cardID: card.id, listID: listID, boardID: boardID)
-            }
-            // Move to board sheet
-            .sheet(isPresented: $showMoveSheet) {
-                MoveCardSheet(
-                    cardID: card.id,
-                    currentListID: listID,
-                    currentBoardID: boardID
-                )
-            }
+        }
     }
 
     // MARK: - Card Content

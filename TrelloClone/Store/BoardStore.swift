@@ -102,7 +102,7 @@ final class BoardStore {
         save()
     }
 
-    /// Search all boards/lists to find a card by ID — used by CardDetailSheet
+    /// Search all boards/lists to find a card by ID — used by CardDetailView
     func findCard(id: UUID) -> (boardID: UUID, listID: UUID, card: Card)? {
         for board in boards {
             for list in board.lists {

@@ -46,6 +46,9 @@ struct BoardSwitcherView: View {
             .navigationDestination(for: UUID.self) { boardID in
                 BoardView(boardID: boardID)
             }
+            .navigationDestination(for: CardRoute.self) { route in
+                CardDetailView(route: route)
+            }
             .sheet(isPresented: $showAddBoard) {
                 AddBoardSheet()
             }
