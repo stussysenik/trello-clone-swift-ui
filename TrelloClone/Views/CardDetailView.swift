@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 // MARK: - CardDetailView
 // Full-viewport card editor that replaces the old sheet-based CardDetailSheet.
@@ -12,6 +13,7 @@ struct CardDetailView: View {
     let route: CardRoute
 
     @Environment(BoardStore.self) private var store
+    @Environment(ImageStorageService.self) private var imageStorage
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
 
@@ -27,6 +29,10 @@ struct CardDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var showMoveSheet = false
     @FocusState private var isTitleFocused: Bool
+
+    // Attachment state
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var thumbnailCache: [String: PlatformImage] = [:]
 
     // Original snapshot for dirty-checking
     @State private var originalTitle = ""
@@ -57,6 +63,11 @@ struct CardDetailView: View {
     /// Resolve current list from board
     private var list: BoardList? {
         board?.lists.first { $0.id == route.listID }
+    }
+
+    /// Current card from store (live)
+    private var currentCard: Card? {
+        store.findCard(id: route.cardID)?.card
     }
 
     /// Check if any field has been modified
@@ -143,12 +154,17 @@ struct CardDetailView: View {
                     .font(AppTheme.cardDetailBodyFont)
                     .lineSpacing(AppTheme.cardDetailBodyLineSpacing)
                     .foregroundStyle(AppTheme.textPrimary)
-                    .frame(minHeight: 300)
+                    .frame(minHeight: 200)
                     .scrollContentBackground(.hidden)
                     .padding(.horizontal, AppTheme.spacingMD)
 
+                Divider()
+                    .padding(.horizontal, AppTheme.spacingLG)
+
+                // MARK: Attachments
+                attachmentsSection
+
                 // Placeholder sections for future layers
-                // [Attachments — Layer 3]
                 // [History — Layer 4]
                 // [AI Insights — Layer 5]
 
@@ -184,6 +200,12 @@ struct CardDetailView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
+                // Delete all attachment files before removing card
+                if let card = currentCard {
+                    for attachment in card.attachments {
+                        imageStorage.deleteImage(filename: attachment.filename)
+                    }
+                }
                 withAnimation(reduceMotion ? nil : AppTheme.professionalSpring) {
                     store.deleteCard(id: route.cardID, from: route.listID, in: route.boardID)
                 }
@@ -200,8 +222,84 @@ struct CardDetailView: View {
                 onMoved: { dismiss() }
             )
         }
+        .onChange(of: selectedPhoto) { _, newItem in
+            handlePhotoSelection(newItem)
+        }
         .onAppear { loadCard() }
         .onDisappear { saveIfChanged() }
+    }
+
+    // MARK: - Attachments Section
+
+    private var attachmentsSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+            HStack {
+                Text("Attachments")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+
+                Spacer()
+
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Label("Add", systemImage: "plus")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(AppTheme.accent)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, AppTheme.spacingLG)
+            .padding(.top, AppTheme.spacingLG)
+
+            if let card = currentCard, !card.attachments.isEmpty {
+                // Thumbnail grid — 3 columns
+                let columns = [GridItem(.adaptive(minimum: 90), spacing: AppTheme.spacingSM)]
+                LazyVGrid(columns: columns, spacing: AppTheme.spacingSM) {
+                    ForEach(card.attachments) { attachment in
+                        attachmentThumbnail(attachment)
+                    }
+                }
+                .padding(.horizontal, AppTheme.spacingLG)
+            } else {
+                Text("No attachments")
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .padding(.horizontal, AppTheme.spacingLG)
+            }
+        }
+        .padding(.bottom, AppTheme.spacingMD)
+    }
+
+    private func attachmentThumbnail(_ attachment: Attachment) -> some View {
+        Group {
+            if let thumb = thumbnailCache[attachment.filename] {
+                Image(platformImage: thumb)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Rectangle()
+                    .fill(AppTheme.listBackground)
+                    .overlay {
+                        Image(systemName: "photo")
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .onAppear {
+                        loadThumbnail(for: attachment)
+                    }
+            }
+        }
+        .frame(height: 90)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSM))
+        .contextMenu {
+            Button(role: .destructive) {
+                withAnimation(reduceMotion ? nil : AppTheme.fastSpring) {
+                    imageStorage.deleteImage(filename: attachment.filename)
+                    store.removeAttachment(id: attachment.id, from: route.cardID, in: route.listID, boardID: route.boardID)
+                    thumbnailCache.removeValue(forKey: attachment.filename)
+                }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
     }
 
     // MARK: - Property Row Template
@@ -361,6 +459,11 @@ struct CardDetailView: View {
         originalColorTag = card.colorTag
         originalDueDate = card.dueDate
         originalTags = card.tags
+
+        // Preload thumbnails
+        for attachment in card.attachments {
+            loadThumbnail(for: attachment)
+        }
     }
 
     /// Auto-save on disappear — only persists if changes were made (Linear/Notion pattern)
@@ -387,5 +490,43 @@ struct CardDetailView: View {
             tags.append(trimmed)
         }
         newTagText = ""
+    }
+
+    private func handlePhotoSelection(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+            let filename = "\(UUID().uuidString).jpg"
+            guard imageStorage.saveImage(data, filename: filename) else { return }
+            await MainActor.run {
+                withAnimation(reduceMotion ? nil : AppTheme.fastSpring) {
+                    store.addAttachment(filename: filename, to: route.cardID, in: route.listID, boardID: route.boardID)
+                }
+                // Load thumbnail immediately
+                if let thumb = imageStorage.loadThumbnail(filename: filename) {
+                    thumbnailCache[filename] = thumb
+                }
+            }
+            selectedPhoto = nil
+        }
+    }
+
+    private func loadThumbnail(for attachment: Attachment) {
+        guard thumbnailCache[attachment.filename] == nil else { return }
+        if let thumb = imageStorage.loadThumbnail(filename: attachment.filename) {
+            thumbnailCache[attachment.filename] = thumb
+        }
+    }
+}
+
+// MARK: - Image Extension for Cross-Platform PlatformImage → SwiftUI Image
+
+extension Image {
+    init(platformImage: PlatformImage) {
+        #if canImport(UIKit)
+        self.init(uiImage: platformImage)
+        #elseif canImport(AppKit)
+        self.init(nsImage: platformImage)
+        #endif
     }
 }

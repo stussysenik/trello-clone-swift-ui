@@ -119,17 +119,29 @@ struct CardView: View {
                     .lineLimit(2)
             }
 
-            // Due date badge
-            if let dueDate = card.dueDate {
-                HStack(spacing: 4) {
-                    Image(systemName: "calendar")
-                        .font(.caption2)
-                    Text(dueDate, style: .date)
-                        .font(.caption2)
+            // Bottom row: due date + attachment count
+            HStack(spacing: AppTheme.spacingSM) {
+                if let dueDate = card.dueDate {
+                    HStack(spacing: 4) {
+                        Image(systemName: "calendar")
+                            .font(.caption2)
+                        Text(dueDate, style: .date)
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(dueDate < .now ? .red : AppTheme.textSecondary)
                 }
-                .foregroundStyle(dueDate < .now ? .red : AppTheme.textSecondary)
-                .padding(.top, 2)
+
+                if !card.attachments.isEmpty {
+                    HStack(spacing: 2) {
+                        Image(systemName: "paperclip")
+                            .font(.caption2)
+                        Text("\(card.attachments.count)")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(AppTheme.textSecondary)
+                }
             }
+            .padding(.top, card.dueDate != nil || !card.attachments.isEmpty ? 2 : 0)
         }
         .padding(AppTheme.spacingMD)
         .frame(maxWidth: .infinity, minHeight: AppTheme.minTouchTarget, alignment: .leading)

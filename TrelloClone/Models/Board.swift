@@ -1,5 +1,22 @@
 import Foundation
 
+// MARK: - Attachment
+// Image attachment metadata stored on a Card.
+// The actual image file lives in Documents/TrelloClone/attachments/{id}.jpg
+// — only the lightweight metadata (id, filename, timestamp) is persisted in UserDefaults.
+
+struct Attachment: Identifiable, Codable, Hashable {
+    let id: UUID
+    let filename: String
+    let createdAt: Date
+
+    init(id: UUID = UUID(), filename: String, createdAt: Date = .now) {
+        self.id = id
+        self.filename = filename
+        self.createdAt = createdAt
+    }
+}
+
 // MARK: - Card
 // The smallest unit in the Trello hierarchy. Lives inside a BoardList.
 // Value type (struct) so SwiftUI can efficiently diff changes.
@@ -14,6 +31,8 @@ struct Card: Identifiable, Codable, Hashable {
     var dueDate: Date?
     /// Text-based tags displayed as colored pills on the card
     var tags: [String]
+    /// Image attachments stored in Documents directory
+    var attachments: [Attachment]
     let createdAt: Date
 
     init(
@@ -23,6 +42,7 @@ struct Card: Identifiable, Codable, Hashable {
         colorTag: String? = nil,
         dueDate: Date? = nil,
         tags: [String] = [],
+        attachments: [Attachment] = [],
         createdAt: Date = .now
     ) {
         self.id = id
@@ -31,11 +51,12 @@ struct Card: Identifiable, Codable, Hashable {
         self.colorTag = colorTag
         self.dueDate = dueDate
         self.tags = tags
+        self.attachments = attachments
         self.createdAt = createdAt
     }
 
     /// Custom decoder for backward compatibility — existing UserDefaults data
-    /// may not contain the `tags` field.
+    /// may not contain the `tags` or `attachments` fields.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -44,6 +65,7 @@ struct Card: Identifiable, Codable, Hashable {
         colorTag = try container.decodeIfPresent(String.self, forKey: .colorTag)
         dueDate = try container.decodeIfPresent(Date.self, forKey: .dueDate)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        attachments = try container.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
         createdAt = try container.decode(Date.self, forKey: .createdAt)
     }
 }

@@ -114,6 +114,29 @@ final class BoardStore {
         return nil
     }
 
+    // MARK: - Attachment CRUD
+
+    /// Adds an attachment record to a card. Image file is managed by ImageStorageService.
+    func addAttachment(filename: String, to cardID: UUID, in listID: UUID, boardID: UUID) {
+        guard let bi = boards.firstIndex(where: { $0.id == boardID }),
+              let li = boards[bi].lists.firstIndex(where: { $0.id == listID }),
+              let ci = boards[bi].lists[li].cards.firstIndex(where: { $0.id == cardID })
+        else { return }
+        let attachment = Attachment(filename: filename)
+        boards[bi].lists[li].cards[ci].attachments.append(attachment)
+        save()
+    }
+
+    /// Removes an attachment record from a card.
+    func removeAttachment(id: UUID, from cardID: UUID, in listID: UUID, boardID: UUID) {
+        guard let bi = boards.firstIndex(where: { $0.id == boardID }),
+              let li = boards[bi].lists.firstIndex(where: { $0.id == listID }),
+              let ci = boards[bi].lists[li].cards.firstIndex(where: { $0.id == cardID })
+        else { return }
+        boards[bi].lists[li].cards[ci].attachments.removeAll { $0.id == id }
+        save()
+    }
+
     // MARK: - Drag & Drop
 
     /// Atomically moves a card from its source list to a destination list at a given index.
