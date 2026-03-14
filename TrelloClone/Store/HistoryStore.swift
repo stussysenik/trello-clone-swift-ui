@@ -1,9 +1,10 @@
 import Foundation
 
 // MARK: - HistoryStore
-// Separate @Observable store for version history, persisted in its own
-// UserDefaults key ("trelloclone.history") to avoid bloating board data.
+// Separate @Observable store for version history, synced via iCloud KVS.
+// Persisted in its own key ("trelloclone.history") to avoid bloating board data.
 // Capped at 500 entries — oldest are trimmed on each record() call.
+// Uses NSUbiquitousKeyValueStore with UserDefaults as local fallback.
 
 @Observable
 final class HistoryStore {
@@ -16,16 +17,38 @@ final class HistoryStore {
 
     private static let storageKey = "trelloclone.history"
     private static let maxEntries = 500
+    private let iCloudStore = NSUbiquitousKeyValueStore.default
 
     // MARK: Init
 
     init() {
-        if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+        // Priority: iCloud → UserDefaults (migration) → empty
+        if let data = iCloudStore.data(forKey: Self.storageKey),
            let decoded = try? JSONDecoder().decode([HistoryEntry].self, from: data) {
             self.entries = decoded
+        } else if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+                  let decoded = try? JSONDecoder().decode([HistoryEntry].self, from: data) {
+            self.entries = decoded
+            iCloudStore.set(data, forKey: Self.storageKey)
+            iCloudStore.synchronize()
         } else {
             self.entries = []
         }
+
+        NotificationCenter.default.addObserver(
+            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: iCloudStore,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reloadFromICloud()
+        }
+        iCloudStore.synchronize()
+    }
+
+    private func reloadFromICloud() {
+        guard let data = iCloudStore.data(forKey: Self.storageKey),
+              let decoded = try? JSONDecoder().decode([HistoryEntry].self, from: data) else { return }
+        self.entries = decoded
     }
 
     // MARK: - Record
@@ -71,6 +94,8 @@ final class HistoryStore {
 
     private func save() {
         guard let data = try? JSONEncoder().encode(entries) else { return }
-        UserDefaults.standard.set(data, forKey: Self.storageKey)
+        iCloudStore.set(data, forKey: Self.storageKey)
+        iCloudStore.synchronize()
+        UserDefaults.standard.set(data, forKey: Self.storageKey) // Local fallback
     }
 }

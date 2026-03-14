@@ -38,29 +38,46 @@ enum AppTheme {
     /// Drop target highlight — accent at 15% opacity
     static let dropHighlight = Color(hex: 0x4285F4).opacity(0.15)
 
-    // MARK: Tag Palette
+    // MARK: Tag Colors (OKLCH-based)
+    //
+    // Uses OKLCH perceptual color space for vibrant, evenly-spaced tag colors.
+    // djb2 hash gives each tag a stable hue; golden-angle rotation ensures
+    // adjacent tags in a card's list never share similar colors.
 
-    /// 8 fixed colors for text-based tags — deterministic via djb2 hash
-    static let tagPalette: [UInt] = [
-        0xE53935, // Red
-        0xF4511E, // Deep Orange
-        0xFB8C00, // Orange
-        0x43A047, // Green
-        0x039BE5, // Light Blue
-        0x5E35B1, // Deep Purple
-        0x8E24AA, // Purple
-        0x00897B, // Teal
-    ]
-
-    /// Returns a deterministic Color for a tag string using djb2 hash.
-    /// Unlike `String.hashValue`, djb2 is stable across launches.
-    static func tagColor(for tag: String) -> Color {
+    /// Computes the djb2 hash hue for a tag string (0–360).
+    /// Stable across launches unlike `String.hashValue`.
+    static func tagHue(for tag: String) -> Double {
         var hash: UInt = 5381
         for byte in tag.utf8 {
-            hash = ((hash &<< 5) &+ hash) &+ UInt(byte) // hash * 33 + byte
+            hash = ((hash &<< 5) &+ hash) &+ UInt(byte)
         }
-        let hex = tagPalette[Int(hash % UInt(tagPalette.count))]
-        return Color(hex: hex)
+        return Double(hash % 360)
+    }
+
+    /// Returns a single deterministic OKLCH Color for a tag string.
+    static func tagColor(for tag: String) -> Color {
+        Color.oklch(lightness: 0.72, chroma: 0.14, hue: tagHue(for: tag))
+    }
+
+    /// Returns colors for an ordered array of tags, guaranteeing adjacent
+    /// tags (n and n+1) never share a similar hue. When two neighbors fall
+    /// within 30° of each other, the second is rotated by the golden angle
+    /// (137.508°) for maximum perceptual separation.
+    static func tagColors(for tags: [String]) -> [Color] {
+        guard !tags.isEmpty else { return [] }
+        var colors: [Color] = []
+        var prevHue: Double = -999 // sentinel so first tag is never shifted
+        for tag in tags {
+            let baseHue = tagHue(for: tag)
+            var hue = baseHue
+            let delta = abs(hue - prevHue).truncatingRemainder(dividingBy: 360)
+            if min(delta, 360 - delta) < 30 {
+                hue = (baseHue + 137.508).truncatingRemainder(dividingBy: 360)
+            }
+            colors.append(Color.oklch(lightness: 0.72, chroma: 0.14, hue: hue))
+            prevHue = hue
+        }
+        return colors
     }
 
     // MARK: Spacing
@@ -128,6 +145,12 @@ enum AppTheme {
     /// Drop zone highlight animation
     static let dropTargetAnimation: Animation = .easeInOut(duration: 0.2)
 
+    /// Bouncy spring for drag-drop landing — playful but controlled
+    static let bouncyDropSpring: Animation = .spring(duration: 0.4, bounce: 0.3)
+
+    /// Pulsing border for active drop zones — loops while targeted
+    static let dropZonePulseAnimation: Animation = .easeInOut(duration: 0.6).repeatForever(autoreverses: true)
+
     // MARK: Animation Values
 
     /// Entry/exit scale — never animate from 0
@@ -141,6 +164,9 @@ enum AppTheme {
 
     /// Materializing blur radius
     static let entryBlur: CGFloat = 4
+
+    /// Scale for element being dragged (lift effect)
+    static let dragLiftScale: CGFloat = 1.05
 
     /// macOS hover lift scale
     static let hoverScale: CGFloat = 1.02
@@ -175,6 +201,54 @@ extension Color {
             green: Double((hex >> 8) & 0xFF) / 255.0,
             blue: Double(hex & 0xFF) / 255.0,
             opacity: opacity
+        )
+    }
+}
+
+// MARK: - OKLCH Color Extension
+// Converts OKLCH (perceptual lightness, chroma, hue) to sRGB via the OKLab
+// intermediate space. OKLCH provides perceptually uniform color spacing —
+// equal chroma values look equally vivid regardless of hue.
+
+extension Color {
+    /// Creates a SwiftUI Color from OKLCH components.
+    /// - Parameters:
+    ///   - lightness: Perceptual lightness 0…1 (0 = black, 1 = white)
+    ///   - chroma: Colorfulness 0…~0.37 (0 = gray)
+    ///   - hue: Hue angle in degrees 0…360
+    static func oklch(lightness L: Double, chroma C: Double, hue h: Double) -> Color {
+        // OKLCH → OKLab
+        let hRad = h * .pi / 180.0
+        let a = C * cos(hRad)
+        let b = C * sin(hRad)
+
+        // OKLab → linear sRGB (using the OKLab→LMS→linear-sRGB matrix chain)
+        let l_ = L + 0.3963377774 * a + 0.2158037573 * b
+        let m_ = L - 0.1055613458 * a - 0.0638541728 * b
+        let s_ = L - 0.0894841775 * a - 1.2914855480 * b
+
+        let l = l_ * l_ * l_
+        let m = m_ * m_ * m_
+        let s = s_ * s_ * s_
+
+        var r = +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s
+        var g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s
+        var bl = -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
+
+        // Clamp to sRGB gamut
+        r = min(max(r, 0), 1)
+        g = min(max(g, 0), 1)
+        bl = min(max(bl, 0), 1)
+
+        // Linear → sRGB gamma
+        func gammaEncode(_ c: Double) -> Double {
+            c <= 0.0031308 ? 12.92 * c : 1.055 * pow(c, 1.0 / 2.4) - 0.055
+        }
+
+        return Color(
+            red: gammaEncode(r),
+            green: gammaEncode(g),
+            blue: gammaEncode(bl)
         )
     }
 }

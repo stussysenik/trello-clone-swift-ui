@@ -1,11 +1,13 @@
 import SwiftUI
 
 // MARK: - TagPillView
-// Capsule pill displaying a tag name with a deterministic background color.
-// Uses AppTheme.tagColor(for:) for consistent coloring across launches.
+// Capsule pill displaying a tag name with an OKLCH-generated background color.
+// Accepts an explicit Color so the parent can use `tagColors(for:)` to
+// guarantee adjacent tags never share similar hues.
 
 struct TagPillView: View {
     let tag: String
+    var color: Color = AppTheme.tagColor(for: "")
 
     var body: some View {
         Text(tag)
@@ -13,7 +15,7 @@ struct TagPillView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(AppTheme.tagColor(for: tag))
+            .background(color)
             .clipShape(Capsule())
     }
 }
@@ -31,7 +33,6 @@ struct CardView: View {
     let boardID: UUID
 
     @Environment(BoardStore.self) private var store
-    @Environment(CardIntelligenceService.self) private var intelligence
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showDeleteConfirmation = false
@@ -102,12 +103,13 @@ struct CardView: View {
                 .foregroundStyle(AppTheme.textPrimary)
                 .lineLimit(2)
 
-            // Tag pills — horizontal scroll for overflow
+            // Tag pills — OKLCH colors with adjacent uniqueness
             if !card.tags.isEmpty {
+                let colors = AppTheme.tagColors(for: card.tags)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
-                        ForEach(card.tags, id: \.self) { tag in
-                            TagPillView(tag: tag)
+                        ForEach(Array(card.tags.enumerated()), id: \.element) { i, tag in
+                            TagPillView(tag: tag, color: colors[i])
                         }
                     }
                 }
@@ -149,33 +151,6 @@ struct CardView: View {
         .background(AppTheme.cardSurface)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSM))
         .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
-        .overlay(alignment: .topTrailing) {
-            // Mood dot — 6pt ambient sentiment indicator (no labels, just color)
-            moodDot
-        }
-    }
-
-    /// Tiny colored dot reflecting card sentiment. Green = positive, amber = neutral, red = negative.
-    @ViewBuilder
-    private var moodDot: some View {
-        let text = "\(card.title) \(card.description)"
-        if !text.trimmingCharacters(in: .whitespaces).isEmpty {
-            let score = intelligence.analyzeSentiment(text: text)
-            Circle()
-                .fill(moodColor(for: score))
-                .frame(width: 6, height: 6)
-                .padding(AppTheme.spacingSM)
-        }
-    }
-
-    private func moodColor(for score: Double) -> Color {
-        if score > 0.1 {
-            return Color(hex: 0x34A853) // Green — positive
-        } else if score < -0.1 {
-            return Color(hex: 0xEA4335) // Red — negative
-        } else {
-            return Color(hex: 0xFA7B17) // Amber — neutral
-        }
     }
 }
 

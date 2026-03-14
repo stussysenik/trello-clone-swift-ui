@@ -31,7 +31,7 @@ struct ListView: View {
             // MARK: Header
             header
 
-            // MARK: Card Stack
+            // MARK: Card Stack — double-tap empty area to create card inline
             ScrollView {
                 LazyVStack(spacing: AppTheme.spacingSM) {
                     if list.cards.isEmpty {
@@ -42,8 +42,16 @@ struct ListView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, AppTheme.spacingXL)
                     } else {
-                        ForEach(list.cards) { card in
+                        ForEach(Array(list.cards.enumerated()), id: \.element.id) { index, card in
                             CardView(card: card, listID: list.id, boardID: boardID)
+                                // Per-card drop destination for within-list reorder
+                                .dropDestination(for: CardTransferPayload.self) { payloads, _ in
+                                    guard let payload = payloads.first else { return false }
+                                    withAnimation(reduceMotion ? nil : AppTheme.bouncyDropSpring) {
+                                        store.moveCard(payload: payload, toListID: list.id, at: index, in: boardID)
+                                    }
+                                    return true
+                                }
                                 .transition(.asymmetric(
                                     insertion: .opacity
                                         .combined(with: .offset(y: AppTheme.entryOffset))
@@ -57,6 +65,13 @@ struct ListView: View {
                 .padding(.horizontal, AppTheme.spacingMD)
                 .padding(.bottom, AppTheme.spacingSM)
             }
+            .contentShape(Rectangle()) // Extend tap target to empty areas
+            .onTapGesture(count: 2) {
+                isAddingCard = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isNewCardFocused = true
+                }
+            }
 
             // MARK: Inline Card Creation
             inlineCardCreation
@@ -68,11 +83,13 @@ struct ListView: View {
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD)
                 .stroke(isTargeted ? AppTheme.accent : .clear, lineWidth: 2)
+                .scaleEffect(isTargeted ? 1.02 : 1.0)
+                .animation(isTargeted ? AppTheme.dropZonePulseAnimation : .default, value: isTargeted)
         )
         // MARK: Drop Target
         .dropDestination(for: CardTransferPayload.self) { payloads, _ in
             guard let payload = payloads.first else { return false }
-            withAnimation(reduceMotion ? nil : AppTheme.fastSpring) {
+            withAnimation(reduceMotion ? nil : AppTheme.bouncyDropSpring) {
                 store.moveCard(
                     payload: payload,
                     toListID: list.id,

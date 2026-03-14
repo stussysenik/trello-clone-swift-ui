@@ -2,8 +2,13 @@ import SwiftUI
 
 // MARK: - BoardStore
 // Central state manager using the @Observable macro (iOS 17+).
-// Owns all boards and provides CRUD + drag-drop + UserDefaults persistence.
+// Owns all boards and provides CRUD + drag-drop persistence.
 // Records all mutations to HistoryStore when available.
+//
+// Persistence: NSUbiquitousKeyValueStore (iCloud KVS) with UserDefaults
+// as local fallback. On init, migrates existing UserDefaults data to iCloud.
+// Listens for `didChangeExternallyNotification` to reload when another
+// device pushes changes — enabling seamless Mac ↔ iPhone sync.
 
 @Observable
 final class BoardStore {
@@ -16,19 +21,44 @@ final class BoardStore {
     /// Optional history store — wired in TrelloApp. Records all mutations.
     var historyStore: HistoryStore?
 
-    // MARK: Persistence Key
+    // MARK: Persistence
 
     private static let storageKey = "trelloclone.boards"
+    private let iCloudStore = NSUbiquitousKeyValueStore.default
 
-    // MARK: Init — Load or Seed
+    // MARK: Init — iCloud → UserDefaults migration → Sample data
 
     init() {
-        if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+        // Priority: iCloud → UserDefaults (one-time migration) → sample data
+        if let data = iCloudStore.data(forKey: Self.storageKey),
            let decoded = try? JSONDecoder().decode([Board].self, from: data) {
             self.boards = decoded
+        } else if let data = UserDefaults.standard.data(forKey: Self.storageKey),
+                  let decoded = try? JSONDecoder().decode([Board].self, from: data) {
+            self.boards = decoded
+            // Migrate existing local data up to iCloud
+            iCloudStore.set(data, forKey: Self.storageKey)
+            iCloudStore.synchronize()
         } else {
             self.boards = Self.sampleData()
         }
+
+        // Listen for changes pushed from other devices
+        NotificationCenter.default.addObserver(
+            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: iCloudStore,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reloadFromICloud()
+        }
+        iCloudStore.synchronize()
+    }
+
+    /// Reloads board data when another device pushes iCloud changes.
+    private func reloadFromICloud() {
+        guard let data = iCloudStore.data(forKey: Self.storageKey),
+              let decoded = try? JSONDecoder().decode([Board].self, from: data) else { return }
+        self.boards = decoded
     }
 
     // MARK: - Board CRUD
@@ -230,7 +260,9 @@ final class BoardStore {
 
     private func save() {
         guard let data = try? JSONEncoder().encode(boards) else { return }
-        UserDefaults.standard.set(data, forKey: Self.storageKey)
+        iCloudStore.set(data, forKey: Self.storageKey)
+        iCloudStore.synchronize()
+        UserDefaults.standard.set(data, forKey: Self.storageKey) // Local fallback
     }
 
     // MARK: - Sample Data

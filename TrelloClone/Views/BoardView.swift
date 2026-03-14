@@ -40,7 +40,7 @@ struct BoardView: View {
                                         .dropDestination(for: ListTransferPayload.self) { payloads, _ in
                                             guard let payload = payloads.first,
                                                   payload.sourceBoardID == boardID else { return false }
-                                            withAnimation(reduceMotion ? nil : AppTheme.fastSpring) {
+                                            withAnimation(reduceMotion ? nil : AppTheme.bouncyDropSpring) {
                                                 store.moveList(listID: payload.listID, to: index, in: boardID)
                                             }
                                             return true
@@ -133,5 +133,7 @@ struct ListDragPreview: View {
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
         .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
         .opacity(0.9)
+        .scaleEffect(AppTheme.dragLiftScale)
+        .rotationEffect(.degrees(-2))
     }
 }

@@ -367,9 +367,11 @@ struct CardDetailView: View {
     // MARK: - Tags Content
 
     private var tagsContent: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let colors = AppTheme.tagColors(for: tags)
+        return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                ForEach(tags, id: \.self) { tag in
+                ForEach(Array(tags.enumerated()), id: \.element) { i, tag in
+                    let tagColor = colors[i]
                     HStack(spacing: 4) {
                         Text(tag)
                             .font(.caption.weight(.medium))
@@ -387,12 +389,13 @@ struct CardDetailView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(AppTheme.tagColor(for: tag))
+                    .background(tagColor)
                     .clipShape(Capsule())
                 }
 
                 // AI ghost suggestions — dimmed pills, tap to accept
                 ForEach(suggestedTags.filter { !tags.contains($0) }, id: \.self) { suggestion in
+                    let suggestionColor = AppTheme.tagColor(for: suggestion)
                     Button {
                         withAnimation(reduceMotion ? nil : AppTheme.fastSpring) {
                             tags.append(suggestion)
@@ -405,10 +408,10 @@ struct CardDetailView: View {
                             Text(suggestion)
                                 .font(.caption.weight(.medium))
                         }
-                        .foregroundStyle(AppTheme.tagColor(for: suggestion))
+                        .foregroundStyle(suggestionColor)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(AppTheme.tagColor(for: suggestion).opacity(0.15))
+                        .background(suggestionColor.opacity(0.15))
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
