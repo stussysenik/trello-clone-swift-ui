@@ -9,12 +9,18 @@ import SwiftUI
 struct TrelloApp: App {
     @State private var store = BoardStore()
     @State private var imageStorage = ImageStorageService()
+    @State private var historyStore = HistoryStore()
 
     var body: some Scene {
         WindowGroup {
             BoardSwitcherView()
                 .environment(store)
                 .environment(imageStorage)
+                .environment(historyStore)
+                .onAppear {
+                    // Wire history store into board store for mutation recording
+                    store.historyStore = historyStore
+                }
         }
         #if os(macOS)
         .defaultSize(width: 1100, height: 750)

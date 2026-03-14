@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - BoardStore
 // Central state manager using the @Observable macro (iOS 17+).
 // Owns all boards and provides CRUD + drag-drop + UserDefaults persistence.
+// Records all mutations to HistoryStore when available.
 
 @Observable
 final class BoardStore {
@@ -11,6 +12,9 @@ final class BoardStore {
 
     var boards: [Board]
     var selectedBoardID: UUID?
+
+    /// Optional history store — wired in TrelloApp. Records all mutations.
+    var historyStore: HistoryStore?
 
     // MARK: Persistence Key
 
@@ -33,12 +37,17 @@ final class BoardStore {
         let board = Board(title: title, iconName: iconName)
         boards.append(board)
         save()
+        historyStore?.record(action: .created, entityType: .board, entityID: board.id,
+                             description: "Created board \"\(title)\"", boardID: board.id)
     }
 
     func deleteBoard(id: UUID) {
+        let title = boards.first(where: { $0.id == id })?.title ?? "Unknown"
         boards.removeAll { $0.id == id }
         if selectedBoardID == id { selectedBoardID = nil }
         save()
+        historyStore?.record(action: .deleted, entityType: .board, entityID: id,
+                             description: "Deleted board \"\(title)\"", boardID: id)
     }
 
     func updateBoard(_ boardID: UUID, title: String, iconName: String) {
@@ -46,20 +55,28 @@ final class BoardStore {
         boards[bi].title = title
         boards[bi].iconName = iconName
         save()
+        historyStore?.record(action: .updated, entityType: .board, entityID: boardID,
+                             description: "Updated board \"\(title)\"", boardID: boardID)
     }
 
     // MARK: - List CRUD
 
     func addList(title: String, to boardID: UUID) {
         guard let bi = boards.firstIndex(where: { $0.id == boardID }) else { return }
-        boards[bi].lists.append(BoardList(title: title))
+        let list = BoardList(title: title)
+        boards[bi].lists.append(list)
         save()
+        historyStore?.record(action: .created, entityType: .list, entityID: list.id,
+                             description: "Created list \"\(title)\"", boardID: boardID)
     }
 
     func deleteList(id: UUID, from boardID: UUID) {
         guard let bi = boards.firstIndex(where: { $0.id == boardID }) else { return }
+        let title = boards[bi].lists.first(where: { $0.id == id })?.title ?? "Unknown"
         boards[bi].lists.removeAll { $0.id == id }
         save()
+        historyStore?.record(action: .deleted, entityType: .list, entityID: id,
+                             description: "Deleted list \"\(title)\"", boardID: boardID)
     }
 
     func updateList(_ listID: UUID, title: String, in boardID: UUID) {
@@ -67,6 +84,8 @@ final class BoardStore {
               let li = boards[bi].lists.firstIndex(where: { $0.id == listID }) else { return }
         boards[bi].lists[li].title = title
         save()
+        historyStore?.record(action: .updated, entityType: .list, entityID: listID,
+                             description: "Renamed list to \"\(title)\"", boardID: boardID)
     }
 
     // MARK: - Card CRUD
@@ -78,13 +97,18 @@ final class BoardStore {
         let card = Card(title: title, description: description, colorTag: colorTag, tags: tags)
         boards[bi].lists[li].cards.append(card)
         save()
+        historyStore?.record(action: .created, entityType: .card, entityID: card.id,
+                             description: "Created card \"\(title)\"", boardID: boardID)
     }
 
     func deleteCard(id: UUID, from listID: UUID, in boardID: UUID) {
         guard let bi = boards.firstIndex(where: { $0.id == boardID }),
               let li = boards[bi].lists.firstIndex(where: { $0.id == listID }) else { return }
+        let title = boards[bi].lists[li].cards.first(where: { $0.id == id })?.title ?? "Unknown"
         boards[bi].lists[li].cards.removeAll { $0.id == id }
         save()
+        historyStore?.record(action: .deleted, entityType: .card, entityID: id,
+                             description: "Deleted card \"\(title)\"", boardID: boardID)
     }
 
     func updateCard(_ cardID: UUID, title: String, description: String,
@@ -100,6 +124,8 @@ final class BoardStore {
         boards[bi].lists[li].cards[ci].dueDate = dueDate
         boards[bi].lists[li].cards[ci].tags = tags
         save()
+        historyStore?.record(action: .updated, entityType: .card, entityID: cardID,
+                             description: "Updated card \"\(title)\"", boardID: boardID)
     }
 
     /// Search all boards/lists to find a card by ID — used by CardDetailView
@@ -125,6 +151,9 @@ final class BoardStore {
         let attachment = Attachment(filename: filename)
         boards[bi].lists[li].cards[ci].attachments.append(attachment)
         save()
+        let cardTitle = boards[bi].lists[li].cards[ci].title
+        historyStore?.record(action: .created, entityType: .attachment, entityID: attachment.id,
+                             description: "Added attachment to \"\(cardTitle)\"", boardID: boardID)
     }
 
     /// Removes an attachment record from a card.
@@ -133,8 +162,11 @@ final class BoardStore {
               let li = boards[bi].lists.firstIndex(where: { $0.id == listID }),
               let ci = boards[bi].lists[li].cards.firstIndex(where: { $0.id == cardID })
         else { return }
+        let cardTitle = boards[bi].lists[li].cards[ci].title
         boards[bi].lists[li].cards[ci].attachments.removeAll { $0.id == id }
         save()
+        historyStore?.record(action: .deleted, entityType: .attachment, entityID: id,
+                             description: "Removed attachment from \"\(cardTitle)\"", boardID: boardID)
     }
 
     // MARK: - Drag & Drop
@@ -148,14 +180,14 @@ final class BoardStore {
               let cardIdx = boards[bi].lists[srcIdx].cards.firstIndex(where: { $0.id == payload.cardID })
         else { return }
 
-        // Remove from source
         let card = boards[bi].lists[srcIdx].cards.remove(at: cardIdx)
-
-        // Insert at destination — clamp index to valid range
         let clampedIndex = min(index, boards[bi].lists[dstIdx].cards.count)
         boards[bi].lists[dstIdx].cards.insert(card, at: clampedIndex)
-
         save()
+
+        let destListTitle = boards[bi].lists[dstIdx].title
+        historyStore?.record(action: .moved, entityType: .card, entityID: card.id,
+                             description: "Moved \"\(card.title)\" to \(destListTitle)", boardID: boardID)
     }
 
     /// Reorders a list within the same board — removes from current position,
@@ -169,12 +201,13 @@ final class BoardStore {
         let clampedIndex = min(index, boards[bi].lists.count)
         boards[bi].lists.insert(list, at: clampedIndex)
         save()
+        historyStore?.record(action: .moved, entityType: .list, entityID: listID,
+                             description: "Reordered list \"\(list.title)\"", boardID: boardID)
     }
 
     // MARK: - Cross-Board Move
 
     /// Moves a card from one board/list to another board/list.
-    /// Removes the card from the source and appends it to the destination list.
     func moveCardToBoard(cardID: UUID, fromListID: UUID, fromBoardID: UUID,
                          toListID: UUID, toBoardID: UUID) {
         guard let srcBI = boards.firstIndex(where: { $0.id == fromBoardID }),
@@ -187,6 +220,10 @@ final class BoardStore {
         let card = boards[srcBI].lists[srcLI].cards.remove(at: cardIdx)
         boards[dstBI].lists[dstLI].cards.append(card)
         save()
+
+        let destBoard = boards[dstBI].title
+        historyStore?.record(action: .moved, entityType: .card, entityID: cardID,
+                             description: "Moved \"\(card.title)\" to board \"\(destBoard)\"", boardID: toBoardID)
     }
 
     // MARK: - Persistence

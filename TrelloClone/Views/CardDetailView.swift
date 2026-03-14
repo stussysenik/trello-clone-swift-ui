@@ -14,6 +14,7 @@ struct CardDetailView: View {
 
     @Environment(BoardStore.self) private var store
     @Environment(ImageStorageService.self) private var imageStorage
+    @Environment(HistoryStore.self) private var historyStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
 
@@ -164,8 +165,13 @@ struct CardDetailView: View {
                 // MARK: Attachments
                 attachmentsSection
 
-                // Placeholder sections for future layers
-                // [History — Layer 4]
+                Divider()
+                    .padding(.horizontal, AppTheme.spacingLG)
+
+                // MARK: History
+                historySection
+
+                // Placeholder for future layers
                 // [AI Insights — Layer 5]
 
                 Spacer(minLength: 100)
@@ -230,6 +236,24 @@ struct CardDetailView: View {
     }
 
     // MARK: - Attachments Section
+
+    // MARK: - History Section
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+            DisclosureGroup {
+                HistoryTimelineView(entries: historyStore.history(for: route.cardID))
+                    .padding(.top, AppTheme.spacingXS)
+            } label: {
+                Text("History")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+            }
+        }
+        .padding(.horizontal, AppTheme.spacingLG)
+        .padding(.top, AppTheme.spacingLG)
+        .padding(.bottom, AppTheme.spacingMD)
+    }
 
     private var attachmentsSection: some View {
         VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
