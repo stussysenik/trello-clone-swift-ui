@@ -15,6 +15,7 @@ struct CardDetailView: View {
     @Environment(BoardStore.self) private var store
     @Environment(ImageStorageService.self) private var imageStorage
     @Environment(HistoryStore.self) private var historyStore
+    @Environment(CardIntelligenceService.self) private var intelligence
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
 
@@ -34,6 +35,9 @@ struct CardDetailView: View {
     // Attachment state
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var thumbnailCache: [String: PlatformImage] = [:]
+
+    // AI state — ambient tag suggestions
+    @State private var suggestedTags: [String] = []
 
     // Original snapshot for dirty-checking
     @State private var originalTitle = ""
@@ -233,6 +237,13 @@ struct CardDetailView: View {
         }
         .onAppear { loadCard() }
         .onDisappear { saveIfChanged() }
+        .onChange(of: description) { _, _ in
+            // Debounced: update suggestions when description changes
+            updateSuggestions()
+        }
+        .onChange(of: title) { _, _ in
+            updateSuggestions()
+        }
     }
 
     // MARK: - Attachments Section
@@ -380,6 +391,30 @@ struct CardDetailView: View {
                     .clipShape(Capsule())
                 }
 
+                // AI ghost suggestions — dimmed pills, tap to accept
+                ForEach(suggestedTags.filter { !tags.contains($0) }, id: \.self) { suggestion in
+                    Button {
+                        withAnimation(reduceMotion ? nil : AppTheme.fastSpring) {
+                            tags.append(suggestion)
+                            suggestedTags.removeAll { $0 == suggestion }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(suggestion)
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(AppTheme.tagColor(for: suggestion))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(AppTheme.tagColor(for: suggestion).opacity(0.15))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+
                 // Inline add tag
                 HStack(spacing: 4) {
                     TextField("Add...", text: $newTagText)
@@ -488,6 +523,9 @@ struct CardDetailView: View {
         for attachment in card.attachments {
             loadThumbnail(for: attachment)
         }
+
+        // Generate initial AI tag suggestions
+        updateSuggestions()
     }
 
     /// Auto-save on disappear — only persists if changes were made (Linear/Notion pattern)
@@ -540,6 +578,11 @@ struct CardDetailView: View {
         if let thumb = imageStorage.loadThumbnail(filename: attachment.filename) {
             thumbnailCache[attachment.filename] = thumb
         }
+    }
+
+    /// Regenerates AI tag suggestions from current title + description
+    private func updateSuggestions() {
+        suggestedTags = intelligence.suggestTags(title: title, description: description)
     }
 }
 

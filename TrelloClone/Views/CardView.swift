@@ -31,6 +31,7 @@ struct CardView: View {
     let boardID: UUID
 
     @Environment(BoardStore.self) private var store
+    @Environment(CardIntelligenceService.self) private var intelligence
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showDeleteConfirmation = false
@@ -148,6 +149,33 @@ struct CardView: View {
         .background(AppTheme.cardSurface)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSM))
         .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+        .overlay(alignment: .topTrailing) {
+            // Mood dot — 6pt ambient sentiment indicator (no labels, just color)
+            moodDot
+        }
+    }
+
+    /// Tiny colored dot reflecting card sentiment. Green = positive, amber = neutral, red = negative.
+    @ViewBuilder
+    private var moodDot: some View {
+        let text = "\(card.title) \(card.description)"
+        if !text.trimmingCharacters(in: .whitespaces).isEmpty {
+            let score = intelligence.analyzeSentiment(text: text)
+            Circle()
+                .fill(moodColor(for: score))
+                .frame(width: 6, height: 6)
+                .padding(AppTheme.spacingSM)
+        }
+    }
+
+    private func moodColor(for score: Double) -> Color {
+        if score > 0.1 {
+            return Color(hex: 0x34A853) // Green — positive
+        } else if score < -0.1 {
+            return Color(hex: 0xEA4335) // Red — negative
+        } else {
+            return Color(hex: 0xFA7B17) // Amber — neutral
+        }
     }
 }
 
