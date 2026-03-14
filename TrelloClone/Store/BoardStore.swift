@@ -135,6 +135,19 @@ final class BoardStore {
         save()
     }
 
+    /// Reorders a list within the same board — removes from current position,
+    /// inserts at clamped destination index.
+    func moveList(listID: UUID, to index: Int, in boardID: UUID) {
+        guard let bi = boards.firstIndex(where: { $0.id == boardID }),
+              let srcIdx = boards[bi].lists.firstIndex(where: { $0.id == listID })
+        else { return }
+
+        let list = boards[bi].lists.remove(at: srcIdx)
+        let clampedIndex = min(index, boards[bi].lists.count)
+        boards[bi].lists.insert(list, at: clampedIndex)
+        save()
+    }
+
     // MARK: - Cross-Board Move
 
     /// Moves a card from one board/list to another board/list.

@@ -32,8 +32,19 @@ struct BoardView: View {
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(alignment: .top, spacing: AppTheme.spacingLG) {
-                                ForEach(board.lists) { list in
+                                ForEach(Array(board.lists.enumerated()), id: \.element.id) { index, list in
                                     ListView(boardID: boardID, list: list, listWidth: computedWidth)
+                                        .draggable(ListTransferPayload(listID: list.id, sourceBoardID: boardID)) {
+                                            ListDragPreview(title: list.title, cardCount: list.cards.count, width: computedWidth)
+                                        }
+                                        .dropDestination(for: ListTransferPayload.self) { payloads, _ in
+                                            guard let payload = payloads.first,
+                                                  payload.sourceBoardID == boardID else { return false }
+                                            withAnimation(reduceMotion ? nil : AppTheme.fastSpring) {
+                                                store.moveList(listID: payload.listID, to: index, in: boardID)
+                                            }
+                                            return true
+                                        }
                                         .transition(.asymmetric(
                                             insertion: .opacity
                                                 .combined(with: .offset(x: AppTheme.entryOffset)),
@@ -96,5 +107,31 @@ struct BoardView: View {
             )
         }
         .buttonStyle(PressableButtonStyle())
+    }
+}
+
+// MARK: - ListDragPreview
+// Lightweight drag ghost for list columns — shows title and card count.
+
+struct ListDragPreview: View {
+    let title: String
+    let cardCount: Int
+    let width: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppTheme.spacingSM) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("\(cardCount) cards")
+                .font(.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .padding(AppTheme.spacingLG)
+        .frame(width: width, alignment: .leading)
+        .background(AppTheme.listBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
+        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+        .opacity(0.9)
     }
 }
