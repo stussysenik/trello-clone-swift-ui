@@ -18,10 +18,13 @@ targets:
       - path: TrelloClone
         excludes:
           - "**/.DS_Store"
+    entitlements:
+      path: TrelloClone/TrelloClone.entitlements
+      properties:
+        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
     settings:
       base:
         INFOPLIST_FILE: TrelloClone/Info.plist
-        CODE_SIGN_ENTITLEMENTS: TrelloClone/TrelloClone.entitlements
         PRODUCT_BUNDLE_IDENTIFIER: com.trelloclone.app
         DEVELOPMENT_TEAM: 95MF6RX2GK
         CODE_SIGN_STYLE: Automatic

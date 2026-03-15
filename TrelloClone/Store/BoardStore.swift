@@ -1,4 +1,7 @@
 import SwiftUI
+import os.log
+
+private let logger = Logger(subsystem: "com.trelloclone.app", category: "BoardStore")
 
 // MARK: - BoardStore
 // Central state manager using the @Observable macro (iOS 17+).
@@ -28,19 +31,31 @@ final class BoardStore {
 
     // MARK: Init — iCloud → UserDefaults migration → Sample data
 
+    /// Tracks whether we loaded real data or fell back to samples.
+    /// Prevents sample data from overwriting iCloud when the user hasn't made changes.
+    private var loadedFromSample = false
+
     init() {
+        // Pull latest iCloud data into the local cache BEFORE reading.
+        // synchronize() is async but primes the local cache on subsequent launches.
+        iCloudStore.synchronize()
+
         // Priority: iCloud → UserDefaults (one-time migration) → sample data
         if let data = iCloudStore.data(forKey: Self.storageKey),
            let decoded = try? JSONDecoder().decode([Board].self, from: data) {
             self.boards = decoded
+            logger.notice("[BoardStore] ✅ Loaded \(decoded.count) board(s) from iCloud KVS")
         } else if let data = UserDefaults.standard.data(forKey: Self.storageKey),
                   let decoded = try? JSONDecoder().decode([Board].self, from: data) {
             self.boards = decoded
             // Migrate existing local data up to iCloud
             iCloudStore.set(data, forKey: Self.storageKey)
             iCloudStore.synchronize()
+            logger.notice("[BoardStore] 📦 Migrated \(decoded.count) board(s) from UserDefaults → iCloud")
         } else {
             self.boards = Self.sampleData()
+            self.loadedFromSample = true
+            logger.notice("[BoardStore] 🆕 Loaded sample data (iCloud sync pending…)")
         }
 
         // Listen for changes pushed from other devices
@@ -48,10 +63,33 @@ final class BoardStore {
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: iCloudStore,
             queue: .main
-        ) { [weak self] _ in
-            self?.reloadFromICloud()
+        ) { [weak self] notification in
+            guard let self else { return }
+            if let reason = notification.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int,
+               reason == NSUbiquitousKeyValueStoreQuotaViolationChange {
+                logger.notice("[BoardStore] ⚠️ iCloud KVS quota exceeded (1MB limit)")
+            }
+            self.reloadFromICloud()
         }
+
+        // On fresh installs the iCloud cache may be empty at init time.
+        // Re-check after a short delay to catch data arriving from the server.
+        if loadedFromSample {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.retryICloudLoad()
+            }
+        }
+    }
+
+    /// Second attempt to load iCloud data after the initial sync completes.
+    private func retryICloudLoad() {
         iCloudStore.synchronize()
+        guard loadedFromSample,
+              let data = iCloudStore.data(forKey: Self.storageKey),
+              let decoded = try? JSONDecoder().decode([Board].self, from: data) else { return }
+        self.boards = decoded
+        self.loadedFromSample = false
+        logger.notice("[BoardStore] ☁️ iCloud data arrived — loaded \(decoded.count) board(s)")
     }
 
     /// Reloads board data when another device pushes iCloud changes.
@@ -259,6 +297,8 @@ final class BoardStore {
     // MARK: - Persistence
 
     private func save() {
+        // Once the user mutates data, we own it — clear the sample flag.
+        loadedFromSample = false
         guard let data = try? JSONEncoder().encode(boards) else { return }
         iCloudStore.set(data, forKey: Self.storageKey)
         iCloudStore.synchronize()

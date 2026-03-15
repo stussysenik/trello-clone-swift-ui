@@ -39,8 +39,13 @@ final class HistoryStore {
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: iCloudStore,
             queue: .main
-        ) { [weak self] _ in
-            self?.reloadFromICloud()
+        ) { [weak self] notification in
+            guard let self else { return }
+            if let reason = notification.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int,
+               reason == NSUbiquitousKeyValueStoreQuotaViolationChange {
+                print("[HistoryStore] ⚠️ iCloud KVS quota exceeded (1MB limit)")
+            }
+            self.reloadFromICloud()
         }
         iCloudStore.synchronize()
     }
