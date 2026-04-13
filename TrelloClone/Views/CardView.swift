@@ -150,7 +150,7 @@ struct CardView: View {
         .frame(maxWidth: .infinity, minHeight: AppTheme.minTouchTarget, alignment: .leading)
         .background(AppTheme.cardSurface)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSM))
-        .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+        .appShadow(.card)
     }
 }
 
@@ -168,7 +168,7 @@ struct CardDragPreview: View {
             .frame(width: AppTheme.listWidth - 32, alignment: .leading)
             .background(AppTheme.cardSurface)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSM))
-            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+            .appShadow(.floating)
             .opacity(0.9)
     }
 }

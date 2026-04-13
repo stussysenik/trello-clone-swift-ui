@@ -11,10 +11,12 @@ import SwiftUI
 
 struct BoardSwitcherView: View {
     @Environment(BoardStore.self) private var store
+    @Environment(ThemeStore.self) private var themeStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("boardSwitcher.viewMode") private var viewMode: ViewMode = .grid
     @State private var showAddBoard = false
     @State private var boardToDelete: Board?
+    @State private var showThemePicker = false
 
     var body: some View {
         NavigationStack {
@@ -41,6 +43,9 @@ struct BoardSwitcherView: View {
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 120)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    themeToggleButton
                 }
             }
             .navigationDestination(for: UUID.self) { boardID in
@@ -71,7 +76,29 @@ struct BoardSwitcherView: View {
             } message: {
                 Text("All lists and cards in this board will be deleted.")
             }
+            .sheet(isPresented: $showThemePicker) {
+                ThemePickerSheet()
+                    .presentationDetents([.height(320)])
+            }
         }
+    }
+
+    // MARK: - Theme Toggle
+
+    private var themeToggleButton: some View {
+        Button {
+            showThemePicker = true
+        } label: {
+            Image(systemName: themeStore.mode.iconName)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(AppTheme.primary)
+                .frame(width: 32, height: 32)
+                .background(AppTheme.cardSurface)
+                .clipShape(Circle())
+                .appShadow(.subtle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Theme: \(themeStore.mode.displayName)")
     }
 
     // MARK: - Grid View (default)
@@ -143,7 +170,7 @@ struct BoardSwitcherView: View {
                     .padding(AppTheme.spacingMD)
                     .background(AppTheme.cardSurface)
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSM))
-                    .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+                    .appShadow(.card)
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -189,7 +216,7 @@ struct BoardSwitcherView: View {
                     .frame(height: 80)
                     .background(AppTheme.cardSurface)
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusSM))
-                    .shadow(color: .black.opacity(0.06), radius: 2, x: 0, y: 1)
+                    .appShadow(.subtle)
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -318,12 +345,7 @@ struct BoardCard: View {
         .frame(height: 140)
         .background(AppTheme.cardSurface)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
-        .shadow(
-            color: .black.opacity(isHovered ? 0.12 : 0.08),
-            radius: isHovered ? 6 : 3,
-            x: 0,
-            y: isHovered ? 2 : 1
-        )
+        .appShadow(isHovered ? .column : .card)
         .scaleEffect(isHovered ? AppTheme.hoverScale : 1.0)
         .animation(reduceMotion ? nil : AppTheme.hoverAnimation, value: isHovered)
         .contentShape(Rectangle())
@@ -332,5 +354,102 @@ struct BoardCard: View {
             isHovered = hovering
         }
         #endif
+    }
+}
+
+// MARK: - ThemePickerSheet
+// Bottom sheet for selecting the app theme mode.
+// Shows three options: System, Light, and Dark.
+
+struct ThemePickerSheet: View {
+    @Environment(ThemeStore.self) private var themeStore
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(spacing: AppTheme.spacingLG) {
+            // Handle bar
+            RoundedRectangle(cornerRadius: 2.5)
+                .fill(AppTheme.textSecondary.opacity(0.3))
+                .frame(width: 36, height: 5)
+                .padding(.top, AppTheme.spacingSM)
+
+            Text("Appearance")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(AppTheme.textPrimary)
+
+            VStack(spacing: AppTheme.spacingSM) {
+                ForEach(ThemeMode.allCases) { mode in
+                    ThemeOptionRow(
+                        mode: mode,
+                        isSelected: themeStore.mode == mode
+                    ) {
+                        withAnimation(reduceMotion ? nil : AppTheme.professionalSpring) {
+                            themeStore.setMode(mode)
+                        }
+                        dismiss()
+                    }
+                }
+            }
+            .padding(.horizontal, AppTheme.spacingLG)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.background)
+    }
+}
+
+// MARK: - ThemeOptionRow
+
+struct ThemeOptionRow: View {
+    let mode: ThemeMode
+    let isSelected: Bool
+    let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: AppTheme.spacingMD) {
+                Image(systemName: mode.iconName)
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? AppTheme.primary : AppTheme.textSecondary)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        Circle()
+                            .fill(isSelected ? AppTheme.primary.opacity(0.12) : AppTheme.listBackground)
+                    )
+
+                Text(mode.displayName)
+                    .font(.body.weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? AppTheme.textPrimary : AppTheme.textSecondary)
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.primary)
+                        .transition(
+                            .scale(scale: 0.8)
+                            .combined(with: .opacity)
+                        )
+                }
+            }
+            .padding(AppTheme.spacingMD)
+            .background(AppTheme.cardSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.radiusMD)
+                    .stroke(
+                        isSelected ? AppTheme.primary.opacity(0.5) : AppTheme.cardBorder,
+                        lineWidth: isSelected ? 2 : 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isSelected ? 1.02 : 1.0)
+        .animation(reduceMotion ? nil : AppTheme.pressAnimation, value: isSelected)
     }
 }

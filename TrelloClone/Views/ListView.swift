@@ -79,7 +79,7 @@ struct ListView: View {
         .frame(width: listWidth)
         .background(AppTheme.listBackground)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
-        .shadow(color: .black.opacity(0.1), radius: 6, x: 0, y: 2)
+        .appShadow(.column)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.radiusMD)
                 .stroke(isTargeted ? AppTheme.accent : .clear, lineWidth: 2)

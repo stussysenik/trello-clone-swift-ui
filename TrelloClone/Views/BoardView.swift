@@ -131,7 +131,7 @@ struct ListDragPreview: View {
         .frame(width: width, alignment: .leading)
         .background(AppTheme.listBackground)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.radiusMD))
-        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+        .appShadow(.floating)
         .opacity(0.9)
         .scaleEffect(AppTheme.dragLiftScale)
         .rotationEffect(.degrees(-2))

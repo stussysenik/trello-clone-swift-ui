@@ -1,42 +1,93 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - App Theme
-// Centralized design tokens for the Trello clone.
-// Uses a constrained blue + white palette inspired by Material Design blues.
+//
+// Aesthetic: refined editorial minimalism. Warm paper in light mode,
+// warm charcoal in dark mode. Inspired by iA Writer (restraint), Things
+// (warmth), and Notion (clarity). Neutrals are tinted toward a warm
+// amber hue (h≈85) so surfaces feel like paper, not sterile UI gray.
+// Accent is a single calm indigo (h≈265) — the only pop of color.
+//
+// Every color token resolves dynamically to its light/dark variant at
+// render time via a UIColor/NSColor trait provider. Call sites do NOT
+// need to branch on `@Environment(\.colorScheme)`.
 
 enum AppTheme {
 
     // MARK: Colors
 
-    /// Deep blue — primary brand color used for headers and CTAs
-    static let primary = Color(hex: 0x1A73E8)
+    /// App canvas — the backdrop behind all content
+    static let background = Color(
+        light: .oklch(lightness: 0.983, chroma: 0.004, hue: 85),
+        dark:  .oklch(lightness: 0.145, chroma: 0.008, hue: 85)
+    )
 
-    /// Navy — darker variant for emphasis and pressed states
-    static let primaryDark = Color(hex: 0x0D47A1)
+    /// List column background — sits on the canvas, slightly tinted
+    static let listBackground = Color(
+        light: .oklch(lightness: 0.940, chroma: 0.006, hue: 85),
+        dark:  .oklch(lightness: 0.190, chroma: 0.009, hue: 85)
+    )
 
-    /// Light blue tint — list column background
-    static let listBackground = Color(hex: 0xE8F0FE)
+    /// Card surface — the most elevated flat surface
+    static let cardSurface = Color(
+        light: .oklch(lightness: 1.000, chroma: 0.000, hue: 85),
+        dark:  .oklch(lightness: 0.225, chroma: 0.009, hue: 85)
+    )
 
-    /// Blue-gray — app canvas background
-    static let background = Color(hex: 0xF0F4F8)
+    /// Primary ink — titles, body text
+    static let textPrimary = Color(
+        light: .oklch(lightness: 0.180, chroma: 0.008, hue: 85),
+        dark:  .oklch(lightness: 0.940, chroma: 0.006, hue: 85)
+    )
 
-    /// Pure white — card surface
-    static let cardSurface = Color.white
+    /// Secondary ink — captions, metadata, icons
+    static let textSecondary = Color(
+        light: .oklch(lightness: 0.500, chroma: 0.008, hue: 85),
+        dark:  .oklch(lightness: 0.660, chroma: 0.007, hue: 85)
+    )
 
-    /// Bright blue — accent for interactive elements and highlights
-    static let accent = Color(hex: 0x4285F4)
+    /// Hairline borders and dividers
+    static let cardBorder = Color(
+        light: .oklch(lightness: 0.900, chroma: 0.006, hue: 85),
+        dark:  .oklch(lightness: 0.280, chroma: 0.008, hue: 85)
+    )
 
-    /// Navy text — primary readable text
-    static let textPrimary = Color(hex: 0x1A237E)
+    /// Brand — calm indigo (Things-adjacent, never garish)
+    static let primary = Color(
+        light: .oklch(lightness: 0.520, chroma: 0.180, hue: 265),
+        dark:  .oklch(lightness: 0.660, chroma: 0.150, hue: 265)
+    )
 
-    /// Medium gray — secondary / caption text
-    static let textSecondary = Color(hex: 0x5F6B7A)
+    /// Pressed / emphasized brand
+    static let primaryDark = Color(
+        light: .oklch(lightness: 0.360, chroma: 0.160, hue: 265),
+        dark:  .oklch(lightness: 0.520, chroma: 0.160, hue: 265)
+    )
 
-    /// Light border — card and divider strokes
-    static let cardBorder = Color(hex: 0xDAE0E8)
+    /// Accent — interactive highlights, focus rings
+    static let accent = Color(
+        light: .oklch(lightness: 0.560, chroma: 0.180, hue: 265),
+        dark:  .oklch(lightness: 0.700, chroma: 0.150, hue: 265)
+    )
 
-    /// Drop target highlight — accent at 15% opacity
-    static let dropHighlight = Color(hex: 0x4285F4).opacity(0.15)
+    /// Drop target highlight — translucent accent tint
+    static let dropHighlight = Color(
+        light: Color.oklch(lightness: 0.560, chroma: 0.180, hue: 265).opacity(0.12),
+        dark:  Color.oklch(lightness: 0.700, chroma: 0.150, hue: 265).opacity(0.18)
+    )
+
+    /// Shadow tint — subtle in light, absent in dark.
+    /// Dark mode uses surface-lightness contrast for elevation instead
+    /// of drop shadows (Things / Notion convention).
+    static let shadowColor = Color(
+        light: Color.black.opacity(0.07),
+        dark:  Color.clear
+    )
 
     // MARK: Tag Colors (OKLCH-based)
     //
@@ -55,8 +106,10 @@ enum AppTheme {
     }
 
     /// Returns a single deterministic OKLCH Color for a tag string.
+    /// Tag colors stay consistent across light and dark themes so that
+    /// a tag named "urgent" feels the same object in both modes.
     static func tagColor(for tag: String) -> Color {
-        Color.oklch(lightness: 0.72, chroma: 0.14, hue: tagHue(for: tag))
+        Color.oklch(lightness: 0.68, chroma: 0.13, hue: tagHue(for: tag))
     }
 
     /// Returns colors for an ordered array of tags, guaranteeing adjacent
@@ -74,7 +127,7 @@ enum AppTheme {
             if min(delta, 360 - delta) < 30 {
                 hue = (baseHue + 137.508).truncatingRemainder(dividingBy: 360)
             }
-            colors.append(Color.oklch(lightness: 0.72, chroma: 0.14, hue: hue))
+            colors.append(Color.oklch(lightness: 0.68, chroma: 0.13, hue: hue))
             prevHue = hue
         }
         return colors
@@ -170,24 +223,6 @@ enum AppTheme {
 
     /// macOS hover lift scale
     static let hoverScale: CGFloat = 1.02
-
-    // MARK: Shadows
-
-    /// Subtle shadow for cards
-    static let cardShadow = ShadowStyle.drop(
-        color: Color.black.opacity(0.08),
-        radius: 3,
-        x: 0,
-        y: 1
-    )
-
-    /// Slightly stronger shadow for list columns
-    static let listShadow = ShadowStyle.drop(
-        color: Color.black.opacity(0.1),
-        radius: 6,
-        x: 0,
-        y: 2
-    )
 }
 
 // MARK: - Color Hex Initializer
@@ -202,6 +237,40 @@ extension Color {
             blue: Double(hex & 0xFF) / 255.0,
             opacity: opacity
         )
+    }
+}
+
+// MARK: - Dynamic Light/Dark Color
+// Creates a Color that resolves to one value in light mode and another
+// in dark mode via the platform's native trait-change machinery.
+// Resolution happens during rendering — no environment reads, no view
+// invalidation, no @State. The SwiftUI render pass just asks the
+// UIColor/NSColor for its current value.
+
+extension Color {
+    /// Returns a dynamic Color that resolves to `light` or `dark` based on
+    /// the current system appearance.
+    init(light: Color, dark: Color) {
+        #if canImport(UIKit)
+        let lightUI = UIColor(light)
+        let darkUI  = UIColor(dark)
+        self.init(UIColor { trait in
+            trait.userInterfaceStyle == .dark ? darkUI : lightUI
+        })
+        #elseif canImport(AppKit)
+        let lightNS = NSColor(light)
+        let darkNS  = NSColor(dark)
+        self.init(NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(
+                from: [.aqua, .darkAqua, .vibrantLight, .vibrantDark]
+            ) == .darkAqua
+                || appearance.name == .darkAqua
+                || appearance.name == .vibrantDark
+            return isDark ? darkNS : lightNS
+        })
+        #else
+        self = light
+        #endif
     }
 }
 
@@ -250,6 +319,54 @@ extension Color {
             green: gammaEncode(g),
             blue: gammaEncode(bl)
         )
+    }
+}
+
+// MARK: - Shadow Conveniences
+// Elevation tokens that emit correct shadows in light and vanish in dark.
+// Dark mode expresses elevation through surface lightness steps
+// (cardSurface is brighter than listBackground which is brighter than
+// background). Call sites use `.appShadow(.card)` instead of hand-rolling
+// `.shadow(color: .black.opacity(0.08), ...)`.
+
+extension View {
+    /// Applies an elevation-aware shadow. No-op in dark mode.
+    func appShadow(_ style: AppTheme.Elevation) -> some View {
+        self.shadow(
+            color: AppTheme.shadowColor,
+            radius: style.radius,
+            x: 0,
+            y: style.offsetY
+        )
+    }
+}
+
+extension AppTheme {
+    /// Elevation levels — resolve to subtle drop shadows in light mode
+    /// and disappear in dark mode (where surface lightness steps do the work).
+    enum Elevation {
+        case subtle   // small chips, attached elements
+        case card     // cards, pressable tiles
+        case column   // list columns, raised panels
+        case floating // drag previews, modals
+
+        var radius: CGFloat {
+            switch self {
+            case .subtle:   return 2
+            case .card:     return 3
+            case .column:   return 6
+            case .floating: return 8
+            }
+        }
+
+        var offsetY: CGFloat {
+            switch self {
+            case .subtle:   return 1
+            case .card:     return 1
+            case .column:   return 2
+            case .floating: return 4
+            }
+        }
     }
 }
 

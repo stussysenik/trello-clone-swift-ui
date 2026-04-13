@@ -11,6 +11,7 @@ struct TrelloApp: App {
     @State private var imageStorage = ImageStorageService()
     @State private var historyStore = HistoryStore()
     @State private var intelligence = CardIntelligenceService()
+    @State private var themeStore = ThemeStore()
 
     var body: some Scene {
         WindowGroup {
@@ -19,6 +20,8 @@ struct TrelloApp: App {
                 .environment(imageStorage)
                 .environment(historyStore)
                 .environment(intelligence)
+                .environment(themeStore)
+                .preferredColorScheme(themeStore.colorScheme)
                 .onAppear {
                     // Wire history store into board store for mutation recording
                     store.historyStore = historyStore
